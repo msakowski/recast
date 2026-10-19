@@ -1,0 +1,190 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "recast",
+  "title": "Recast",
+  "description": "Rewrite selected text with Claude on Amazon Bedrock. Supports tone presets and custom instructions.",
+  "icon": "icon.png",
+  "author": "martin_sakowski",
+  "categories": [
+    "Productivity"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "rewrite-selected",
+      "title": "Rewrite Selected Text",
+      "description": "Rewrite the currently selected text with the default tone",
+      "mode": "view"
+    },
+    {
+      "name": "rewrite-with-tone",
+      "title": "Rewrite with Tone",
+      "description": "Choose a tone preset then rewrite the selected text",
+      "mode": "view"
+    },
+    {
+      "name": "rewrite-with-instruction",
+      "title": "Rewrite with Custom Instruction",
+      "description": "Provide a custom rewrite instruction for the selected text",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "instruction",
+          "placeholder": "Custom instruction",
+          "type": "text",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "preferences": [
+    {
+      "name": "credentialMethod",
+      "title": "Credential Method",
+      "description": "How to obtain AWS credentials. 'Profile' uses a named AWS CLI profile. 'Environment' uses AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars. 'Default' uses the AWS SDK default credential chain (env → profile → SSO → instance role).",
+      "type": "dropdown",
+      "required": true,
+      "default": "default",
+      "data": [
+        {
+          "title": "Default Chain (recommended)",
+          "value": "default"
+        },
+        {
+          "title": "Named Profile",
+          "value": "profile"
+        },
+        {
+          "title": "Environment Variables",
+          "value": "environment"
+        }
+      ]
+    },
+    {
+      "name": "awsProfile",
+      "title": "AWS Profile",
+      "description": "AWS CLI profile name. Only used when Credential Method is set to 'Named Profile'.",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "awsRegion",
+      "title": "AWS Region",
+      "description": "AWS region for Bedrock runtime (e.g. us-east-1, eu-central-1)",
+      "type": "textfield",
+      "required": true,
+      "default": "us-east-1"
+    },
+    {
+      "name": "modelId",
+      "title": "Model ID",
+      "description": "Base Bedrock model ID, without an inference profile prefix (e.g. anthropic.claude-haiku-5-5). The prefix comes from the Inference Profile setting.",
+      "type": "textfield",
+      "required": true,
+      "default": "anthropic.claude-haiku-5-5"
+    },
+    {
+      "name": "inferenceProfile",
+      "title": "Inference Profile",
+      "description": "Cross-Region inference profile used to call the model. Global routes to any supported commercial Region; a geography keeps requests within that area. 'None' invokes the model in your AWS Region directly (not supported by Claude Haiku 5.5).",
+      "type": "dropdown",
+      "required": false,
+      "default": "global",
+      "data": [
+        {
+          "title": "Global",
+          "value": "global"
+        },
+        {
+          "title": "US",
+          "value": "us"
+        },
+        {
+          "title": "EU",
+          "value": "eu"
+        },
+        {
+          "title": "Asia Pacific (APAC)",
+          "value": "apac"
+        },
+        {
+          "title": "Australia",
+          "value": "au"
+        },
+        {
+          "title": "Japan",
+          "value": "jp"
+        },
+        {
+          "title": "None (in-Region)",
+          "value": "none"
+        }
+      ]
+    },
+    {
+      "name": "maxTokens",
+      "title": "Max Tokens",
+      "description": "Maximum tokens for the Bedrock response",
+      "type": "textfield",
+      "required": false,
+      "default": "512"
+    },
+    {
+      "name": "temperature",
+      "title": "Temperature",
+      "description": "Optional model temperature (0.0 = deterministic, 1.0 = creative). Leave empty for the model default. Claude Haiku 5.5 does not accept a temperature; leave it empty for that model.",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "defaultTone",
+      "title": "Default Tone",
+      "description": "Tone to use when no tone is specified",
+      "type": "dropdown",
+      "required": false,
+      "default": "friendly",
+      "data": [
+        {
+          "title": "Friendly",
+          "value": "friendly"
+        },
+        {
+          "title": "Professional",
+          "value": "professional"
+        },
+        {
+          "title": "Concise",
+          "value": "concise"
+        },
+        {
+          "title": "Polished",
+          "value": "polished"
+        },
+        {
+          "title": "Neutral",
+          "value": "neutral"
+        }
+      ]
+    }
+  ],
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.600.0",
+    "@aws-sdk/credential-providers": "^3.600.0",
+    "@raycast/api": "^1.104.25"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.0",
+    "eslint": "^8.57.1",
+    "typescript": "^5.7.2"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "typecheck": "tsc --noEmit"
+  }
+}
