@@ -2,6 +2,8 @@
 
 Rewrite selected text using Claude on Amazon Bedrock — right from Raycast. Pick a tone preset, provide a custom instruction, or just hit Enter to polish what you've written.
 
+![Recast rewriting selected text in a friendly tone with Claude Haiku 5.5](media/screenshot.png)
+
 ## Features
 
 - **Rewrite Selected Text** — instantly rewrite with your default tone
