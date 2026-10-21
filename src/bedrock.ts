@@ -133,7 +133,7 @@ export async function rewrite(options: RewriteOptions): Promise<string> {
     throw new Error("No text provided to rewrite.");
   }
 
-  const maxTokens = parseInt(preferences.maxTokens, 10) || 512;
+  const maxTokens = parseInt(preferences.maxTokens, 10) || 2048;
   const temperatureRaw = preferences.temperature?.trim();
   const temperature = temperatureRaw ? Number(temperatureRaw) : undefined;
   if (temperature !== undefined && !Number.isFinite(temperature)) {
@@ -160,6 +160,11 @@ export async function rewrite(options: RewriteOptions): Promise<string> {
       maxTokens,
       ...(temperature !== undefined ? { temperature } : {}),
     },
+    // Rewriting needs no reasoning. Claude models that think by default can
+    // spend the whole token budget thinking and return no text.
+    ...(targetModelId.includes("anthropic.")
+      ? { additionalModelRequestFields: { thinking: { type: "disabled" } } }
+      : {}),
   });
 
   const abortController = new AbortController();
@@ -187,7 +192,14 @@ export async function rewrite(options: RewriteOptions): Promise<string> {
 
   const result = parts.join("\n").trim();
   if (!result) {
-    throw new Error("Bedrock returned empty text.");
+    if (response.stopReason === "max_tokens") {
+      throw new Error(
+        `Model hit the ${maxTokens}-token limit before producing text. Increase Max Tokens in extension preferences.`,
+      );
+    }
+    throw new Error(
+      `Bedrock returned empty text (stop reason: ${response.stopReason ?? "unknown"}).`,
+    );
   }
 
   const ratio = result.length / Math.max(trimmed.length, 1);

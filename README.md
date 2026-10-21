@@ -45,7 +45,7 @@ Open Raycast Settings → Extensions → Recast to configure:
 | AWS Region | Bedrock runtime region | us-east-1 |
 | Model ID | Base Bedrock model ID, without a profile prefix | anthropic.claude-haiku-5-5 |
 | Inference Profile | Global, US, EU, APAC, Australia, Japan, or None (in-Region) | Global |
-| Max Tokens | Maximum response length | 512 |
+| Max Tokens | Maximum response length | 2048 |
 | Temperature | Optional. Creativity (0.0 = deterministic, 1.0 = creative). Leave empty for Claude Haiku 5.5, which rejects it. | — |
 | Default Tone | Tone used by "Rewrite Selected Text" | Friendly |
 

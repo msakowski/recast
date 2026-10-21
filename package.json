@@ -128,7 +128,7 @@
       "description": "Maximum tokens for the Bedrock response",
       "type": "textfield",
       "required": false,
-      "default": "512"
+      "default": "2048"
     },
     {
       "name": "temperature",
