@@ -8,19 +8,19 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Credential Method - How to obtain AWS credentials. 'Profile' uses a named AWS CLI profile. 'Environment' uses AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars. 'Default' uses the AWS SDK default credential chain (env → profile → SSO → instance role). */
+  /** Credential Method - Use AWS SDK credentials, a named AWS CLI profile, or environment variables inherited by Raycast. See the setup guide for SSO and credential_process. */
   "credentialMethod": "default" | "profile" | "environment",
   /** AWS Profile - AWS CLI profile name. Only used when Credential Method is set to 'Named Profile'. */
   "awsProfile": string,
   /** AWS Region - AWS region for Bedrock runtime (e.g. us-east-1, eu-central-1) */
   "awsRegion": string,
-  /** Model ID - Base Bedrock model ID, without an inference profile prefix (e.g. anthropic.claude-haiku-5-5). The prefix comes from the Inference Profile setting. */
+  /** Model ID - Base Bedrock model ID, without a geography prefix. The Inference Profile setting supplies the prefix. An inference profile ARN is used unchanged. */
   "modelId": string,
-  /** Inference Profile - Cross-Region inference profile used to call the model. Global routes to any supported commercial Region; a geography keeps requests within that area. 'None' invokes the model in your AWS Region directly (not supported by Claude Haiku 5.5). */
-  "inferenceProfile": "global" | "us" | "eu" | "apac" | "au" | "jp" | "none",
-  /** Max Tokens - Maximum tokens for the Bedrock response */
+  /** Inference Profile - Global may process text outside your AWS Region. Choose a geography for regional routing, or None for direct invocation. Availability depends on the model and source Region; see the setup guide. */
+  "inferenceProfile": "global" | "us" | "eu" | "apac" | "au" | "jp" | "ca" | "none",
+  /** Max Tokens - Maximum response tokens (1–65536; your model may have a lower limit). Incomplete rewrites cannot be pasted. Increase this for long selections. */
   "maxTokens": string,
-  /** Temperature - Optional model temperature (0.0 = deterministic, 1.0 = creative). Leave empty for the model default. Claude Haiku 5.5 does not accept a temperature; leave it empty for that model. */
+  /** Temperature - Optional value from 0 to 1. Leave empty for Claude Haiku 5.5 and other models with restricted sampling parameters. */
   "temperature": string,
   /** Default Tone - Tone to use when no tone is specified */
   "defaultTone": "friendly" | "professional" | "concise" | "polished" | "neutral"

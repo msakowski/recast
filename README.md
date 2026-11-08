@@ -1,79 +1,127 @@
 # Recast
 
-Rewrite selected text using Claude on Amazon Bedrock — right from Raycast. Pick a tone preset, provide a custom instruction, or just hit Enter to polish what you've written.
+Rewrite, polish, and translate text with Claude on Amazon Bedrock, using your own AWS account. Select text in any app, choose a tone or instruction in Raycast, and review the rewrite before pasting it back.
 
-![Recast rewriting selected text in a friendly tone with Claude Haiku 5.5](media/screenshot.png)
+![Recast showing a completed Friendly rewrite in Raycast](media/screenshot.png)
 
-## Features
+## What you can do
 
-- **Rewrite Selected Text** — instantly rewrite with your default tone
-- **Rewrite with Tone** — choose from Professional, Friendly, Concise, Polished, or Neutral
-- **Rewrite with Custom Instruction** — pass any rewrite instruction (e.g. "make it shorter", "add bullet points", "translate to Spanish")
-- Language-aware: rewrites in the same language as the input unless you explicitly ask to translate
-- Paste the result back into the original app with one keystroke
+- **Rewrite Selected Text** with your default tone.
+- **Rewrite with Tone** using Friendly, Professional, Concise, Polished, or Neutral.
+- **Rewrite with Custom Instruction** to shorten, restructure, or translate text. Supply the optional argument for a quick rewrite, or use the instruction form.
+- Watch the rewrite arrive, compare it with the original, and generate another version.
+- Enter text manually when the source app does not expose a selection.
 
-## Prerequisites
+Recast preserves the original language unless you ask for a translation. Copy and paste actions use the exact output text. The preview displays text literally, including Markdown syntax.
 
-You need an AWS account with access to Amazon Bedrock.
+## Setup
 
-### Model access
+You need an AWS account with Amazon Bedrock model access. **AWS usage charges apply. A Raycast AI subscription is not required.**
 
-Serverless models on Amazon Bedrock are enabled by default. Anthropic models need a one-time use case form before first use: open a Claude model in the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock) playground and submit the form. If your organization already did this, you can skip it.
+### 1. Configure AWS credentials
 
-### Inference profiles
+For most users, choose **Named Profile** in Recast’s extension preferences and enter an existing AWS CLI profile name. Recast supports shared credentials, IAM Identity Center (SSO), `credential_process`, and role-based profiles through the AWS SDK.
 
-Recast calls the model through a [cross-Region inference profile](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html). The default is **Global**, which routes requests to any supported commercial Region. Pick a geography (US, EU, APAC, Australia, Japan) to keep requests within that area, or **None** to call the model in your configured Region directly. Not every model supports every option: Claude Haiku 5.5, for example, is only available through inference profiles.
+For IAM Identity Center, configure and sign in from your terminal:
 
-### AWS credentials
+```sh
+aws configure sso --profile my-profile
+aws sso login --profile my-profile
+```
 
-Recast supports three credential methods (configurable in extension preferences):
+Then set **AWS Profile** to `my-profile` in Raycast Settings → Extensions → Recast. If your organization uses another credential helper, follow its sign-in procedure instead. Recast does not create accounts, log you into AWS, or modify your AWS configuration.
 
-| Method | When to use |
-|--------|-------------|
-| **Default Chain** (recommended) | Works automatically if you already have credentials configured via env vars, `~/.aws/credentials`, AWS SSO, or an instance role. |
-| **Named Profile** | Use a specific profile from `~/.aws/config`. Supports `credential_process`, SSO, and static credentials. |
-| **Environment Variables** | Reads `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` directly. |
+Other credential methods:
 
-## Configuration
+| Method                | Behavior                                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Default Chain         | Use the AWS SDK provider chain, including environment variables, shared profiles, SSO, and workload roles.           |
+| Named Profile         | Resolve the specified profile, including SSO, `credential_process`, and role assumption.                             |
+| Environment Variables | Use `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN` inherited by the Raycast process. |
 
-Open Raycast Settings → Extensions → Recast to configure:
+**Raycast is a desktop app:** variables exported in a terminal or `.zshrc` are usually not inherited by it. Prefer a named profile. Credential helpers installed in `~/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin` are supported; use an absolute executable path in `credential_process` for other locations. The AWS CLI is only needed if your chosen sign-in method requires it.
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| Credential Method | How to obtain AWS credentials | Default Chain |
-| AWS Profile | Named profile (only used with "Named Profile" method) | — |
-| AWS Region | Bedrock runtime region | us-east-1 |
-| Model ID | Base Bedrock model ID, without a profile prefix | anthropic.claude-haiku-5-5 |
-| Inference Profile | Global, US, EU, APAC, Australia, Japan, or None (in-Region) | Global |
-| Max Tokens | Maximum response length | 2048 |
-| Temperature | Optional. Creativity (0.0 = deterministic, 1.0 = creative). Leave empty for Claude Haiku 5.5, which rejects it. | — |
-| Default Tone | Tone used by "Rewrite Selected Text" | Friendly |
+### 2. Enable model access and permissions
 
-## Usage
+Open the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/) in your source Region and confirm that your account can use Claude. Anthropic models can require a one-time use case submission and AWS Marketplace prerequisites. See [Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
 
-1. Select text in any application
-2. Open Raycast and run one of the Recast commands
-3. Wait for the rewrite to appear
-4. Press Enter to paste it back, or ⌘C to copy to clipboard
+Recast uses `ConverseStream`, which requires **`bedrock:InvokeModelWithResponseStream`** on the selected model and, when applicable, inference profile. Cross-Region inference also requires access to the destination foundation models. Have your AWS administrator scope access to your selected model/profile and permitted Regions. See [Converse permissions](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html) and [cross-Region prerequisites](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html). Recast does not change IAM policies.
+
+### 3. Choose your model and routing
+
+Defaults are **Claude Haiku 5.5**, **us-east-1**, and **Global** routing. The base model ID is `anthropic.claude-haiku-5-5`; Recast invokes `global.anthropic.claude-haiku-5-5` with these defaults.
+
+**Global routing can process text outside your configured AWS Region.** Choose a geography such as EU or US if required by your data-handling policy. Both the model and your source Region must support that profile. Choosing EU does not make an unsupported source Region work. **None** invokes a model directly in the source Region and is not supported by Haiku 5.5. An inference profile ARN in Model ID is used unchanged and controls its own routing.
+
+Check the current [Haiku 5.5 model details](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-claude-haiku-5-5.html) and [supported inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html) before changing routing.
+
+## Preferences
+
+Open Raycast Settings → Extensions → Recast.
+
+| Setting           | Default                      | Purpose                                                                                               |
+| ----------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Credential Method | Default Chain                | Choose how the AWS SDK obtains credentials.                                                           |
+| AWS Profile       | Empty                        | Required when using Named Profile.                                                                    |
+| AWS Region        | `us-east-1`                  | Source Region for the Bedrock runtime.                                                                |
+| Model ID          | `anthropic.claude-haiku-5-5` | Base model ID or inference profile ARN.                                                               |
+| Inference Profile | Global                       | Global, US, EU, APAC, Australia, Japan, Canada, or None. Availability varies by model and Region.     |
+| Max Tokens        | `2048`                       | Output budget, from 1 to 65536. Your model may impose a lower limit.                                  |
+| Temperature       | Empty                        | Optional value from 0 to 1. Leave empty for Haiku 5.5 and models with restricted sampling parameters. |
+| Default Tone      | Friendly                     | Tone for Rewrite Selected Text. A custom instruction takes precedence.                                |
+
+Other models must support the Bedrock Converse streaming API and the configured request parameters. Recast only overrides thinking for the default Haiku 5.5 model; other models use their own defaults, which can consume part of the output budget.
+
+## Everyday use
+
+1. Select text in the source app and open a Recast command in Raycast.
+2. Choose a tone or enter an instruction if needed. Without selected text, paste or type text into the form.
+3. Review the streaming preview. Your source text stays unchanged until you choose Paste.
+4. Press **Enter** to paste the completed rewrite into the active app, or **⌘C** to copy it.
+
+Use **⌘O** to switch between the original and rewrite and **⌘R** to request another version. The Actions menu also has Cancel Rewrite, Copy Original, extension preferences, and the setup guide. Going back from a rewrite cancels the pending request. Each retry or new version is a separate Bedrock request and may incur usage charges.
+
+Recast keeps the last completed rewrite if a later attempt fails. Partial, filtered, and truncated responses are never offered as completed rewrites. Review generated text before replacing the original, especially names, figures, and translations.
+
+## Troubleshooting
+
+| Problem                                  | What to do                                                                                                                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No selected text                         | Use the text form, or grant Raycast Accessibility access in macOS System Settings if selection and pasting fail in otherwise supported apps. Some apps do not expose selections. |
+| Missing or expired credentials           | Sign in again with the configured profile’s login command, then use Retry Rewrite. Check the profile name and credential method.                                                 |
+| Access denied                            | Check model access, `bedrock:InvokeModelWithResponseStream`, inference profile resources, and organizational restrictions on destination Regions.                                |
+| Invalid model or configuration           | Confirm the exact model ID, source Region, and routing support. Leave Temperature empty for newer Claude models.                                                                 |
+| Token limit reached                      | Increase Max Tokens or rewrite a smaller selection. A short budget may be consumed by model reasoning.                                                                           |
+| Rate limit or timeout                    | Wait and retry. Lower Max Tokens for throttling, or select less text for long requests. Requests have a 60-second deadline.                                                      |
+| Paste does not replace the intended text | Copy the result, restore the selection in your source app, and paste manually.                                                                                                   |
+
+## Privacy
+
+Recast sends the selected or entered text, rewrite instruction, and built-in writing guidance directly to Amazon Bedrock over the AWS SDK. Requests use your AWS credentials and account. There is no Recast server or external analytics, and Recast does not persist a rewrite history or log prompts, responses, or credentials.
+
+Your AWS account’s logging configuration and service terms still apply: if Bedrock model invocation logging is enabled, prompts and responses may be recorded in your AWS logging destinations. Copy and paste actions place text on the system clipboard, where Raycast Clipboard History or other clipboard managers may retain it. The preview renders text literally so embedded Markdown images do not trigger third-party requests.
 
 ## Development
 
-Requires Node.js 22 or later and [Raycast](https://www.raycast.com).
+Requires macOS, [Raycast](https://www.raycast.com/), Node.js 26.12.1 or later (matching the current Raycast runtime), and npm.
 
 ```sh
 git clone https://github.com/msakowski/recast.git
 cd recast
-npm install
-npm run dev        # build, load into Raycast, and rebuild on change
+npm ci
+npm run dev
 ```
 
-Other scripts: `npm run build` (production build), `npm run lint` (ESLint and Prettier), `npm run typecheck`.
+```sh
+npm run check      # types, behavioral tests, Raycast lint, production build, bundle smoke test
+npm audit         # dependency advisory check
+npm run publish   # submit to Raycast’s extension review; not npm publishing
+```
 
-> [!NOTE]
-> Recast stays on `@raycast/api` 1.x on purpose. With 2.x, `ray build` moves dependencies shared by several commands into a generated `node_modules/` and breaks the AWS SDK v3: every command fails with `Cannot read properties of undefined (reading 'for')` or `Package subpath './transport' is not defined by "exports"`. See [raycast/extensions#32553](https://github.com/raycast/extensions/issues/32553). Upgrade once that is fixed.
+The bundle smoke test loads all three generated commands and exercises the packaged AWS SDK through request serialization, without network access or real credentials. Tests cover stream failures, truncation, cancellation, routing, parameter validation, Unicode, and literal previews. The `minimatch` override pins the patched tooling dependency until upstream consumers update their ranges.
+
+Store publication requires Raycast’s review and merge of the generated pull request. Development changes can be submitted to [the source repository](https://github.com/msakowski/recast).
 
 ## License
 
-[MIT](LICENSE)
-
-Recast is an independent project and is not affiliated with or endorsed by Amazon Web Services or Anthropic.
+[MIT](LICENSE). Recast is independent and is not affiliated with or endorsed by Amazon Web Services or Anthropic.

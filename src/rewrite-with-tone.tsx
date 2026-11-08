@@ -1,114 +1,78 @@
 import {
   ActionPanel,
   Action,
-  Detail,
+  Icon,
   List,
-  getSelectedText,
-  showToast,
-  Toast,
-  getFrontmostApplication,
+  getPreferenceValues,
+  openExtensionPreferences,
+  useNavigation,
 } from "@raycast/api";
-import { useState } from "react";
-import { getConfig, TONES } from "./config";
-import { rewrite } from "./bedrock";
+import { type Preferences, TONE_DETAILS } from "./config";
 import { ResultView } from "./result-view";
+import { type Source, SourceForm, SourceLoading, useSource } from "./source";
 
 export default function Command() {
-  const preferences = getConfig();
-  const [result, setResult] = useState<string | null>(null);
-  const [activeTone, setActiveTone] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [frontApp, setFrontApp] = useState("");
-
-  async function handleToneSelection(tone: string) {
-    let selectedText: string;
-    try {
-      selectedText = await getSelectedText();
-    } catch {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "No text selected",
-      });
-      return;
-    }
-
-    if (!selectedText.trim()) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Selection is empty",
-      });
-      return;
-    }
-
-    setResult(null);
-    setError(null);
-    setActiveTone(tone);
-    setIsLoading(true);
-
-    try {
-      const app = await getFrontmostApplication();
-      setFrontApp(app.name ?? "");
-    } catch {
-      // ignore
-    }
-
-    try {
-      const rewritten = await rewrite({
-        text: selectedText,
-        tone,
-        preferences,
-      });
-      setResult(rewritten);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Rewrite Failed",
-        message,
-      });
-      setError(message);
-      setActiveTone(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  if (activeTone && (isLoading || result)) {
-    const toneLabel = activeTone.charAt(0).toUpperCase() + activeTone.slice(1);
-
-    if (error && !result) {
-      return <Detail markdown={`**Error:** ${error}`} />;
-    }
-
-    return (
-      <ResultView
-        result={result ?? ""}
-        title={`Tone: ${toneLabel}`}
-        isLoading={isLoading}
-        frontApp={frontApp}
-        preferences={preferences}
-      />
-    );
-  }
-
-  return (
-    <List>
-      {Object.entries(TONES).map(([key, description]) => (
-        <List.Item
-          key={key}
-          title={key.charAt(0).toUpperCase() + key.slice(1)}
-          subtitle={description.split(".")[0]}
-          actions={
-            <ActionPanel>
-              <Action
-                title="Rewrite with This Tone"
-                onAction={() => handleToneSelection(key)}
-              />
-            </ActionPanel>
+  const source = useSource();
+  const { push } = useNavigation();
+  const preferences = getPreferenceValues<Preferences>();
+  function selectTone(tone: string, captured: Source) {
+    if (captured.text.trim())
+      push(<ResultView source={captured} tone={tone} nested />);
+    else
+      push(
+        <SourceForm
+          source={captured}
+          onSubmit={(value) =>
+            push(<ResultView source={value} tone={tone} nested />)
           }
-        />
-      ))}
+        />,
+      );
+  }
+  if (!source) return <SourceLoading />;
+  return (
+    <List
+      searchBarPlaceholder="Choose a tone…"
+      selectedItemId={preferences.defaultTone}
+    >
+      <List.Section
+        title={
+          source.text.trim()
+            ? "Rewrite Selected Text"
+            : "Choose a Tone, Then Enter Text"
+        }
+      >
+        {Object.entries(TONE_DETAILS).map(([tone, { title, description }]) => (
+          <List.Item
+            key={tone}
+            id={tone}
+            icon={Icon.Text}
+            title={title}
+            subtitle={description}
+            accessories={
+              tone === preferences.defaultTone ? [{ tag: "Default" }] : []
+            }
+            actions={
+              <ActionPanel>
+                <Action
+                  title={`Rewrite ${title}`}
+                  icon={Icon.Wand}
+                  onAction={() => selectTone(tone, source)}
+                />
+                <Action
+                  title="Open Extension Preferences"
+                  icon={Icon.Gear}
+                  onAction={openExtensionPreferences}
+                />
+              </ActionPanel>
+            }
+          />
+        ))}
+      </List.Section>
+      <List.EmptyView
+        title="No Matching Tones"
+        description="Try Friendly, Professional, Concise, Polished, or Neutral."
+        icon={Icon.MagnifyingGlass}
+      />
     </List>
   );
 }

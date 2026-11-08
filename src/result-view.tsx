@@ -2,68 +2,196 @@ import {
   ActionPanel,
   Action,
   Detail,
-  Clipboard,
-  closeMainWindow,
-  popToRoot,
+  Icon,
+  Keyboard,
+  getPreferenceValues,
+  openExtensionPreferences,
 } from "@raycast/api";
-import { Preferences, formatModelName } from "./config";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type Preferences, TONE_DETAILS, formatModelName } from "./config";
+import { rewrite } from "./bedrock";
+import { rewriteError } from "./errors";
+import { type Source } from "./source";
 
-interface ResultViewProps {
-  result: string;
-  title: string;
-  subtitle?: string;
-  isLoading: boolean;
-  frontApp: string;
-  preferences: Preferences;
-}
+import { literalMarkdown } from "./preview";
 
 export function ResultView({
-  result,
-  title,
-  subtitle,
-  isLoading,
-  frontApp,
-  preferences,
-}: ResultViewProps) {
+  source,
+  tone,
+  instruction,
+  nested = false,
+}: {
+  source: Source;
+  tone: string;
+  instruction?: string;
+  nested?: boolean;
+}) {
+  const [result, setResult] = useState("");
+  const [partial, setPartial] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [preferences, setPreferences] = useState(() =>
+    getPreferenceValues<Preferences>(),
+  );
+  const pending = useRef<AbortController | undefined>(undefined);
+  const mounted = useRef(false);
+  const run = useCallback(async () => {
+    if (pending.current) return;
+    const controller = new AbortController();
+    pending.current = controller;
+    const currentPreferences = getPreferenceValues<Preferences>();
+    setPreferences(currentPreferences);
+    setIsLoading(true);
+    setPartial("");
+    setError(undefined);
+    try {
+      const text = await rewrite({
+        text: source.text,
+        tone,
+        customInstruction: instruction,
+        preferences: currentPreferences,
+        signal: controller.signal,
+        onPartial: (value) => {
+          if (
+            mounted.current &&
+            pending.current === controller &&
+            !controller.signal.aborted
+          )
+            setPartial(value);
+        },
+      });
+      if (
+        mounted.current &&
+        pending.current === controller &&
+        !controller.signal.aborted
+      )
+        setResult(text);
+    } catch (err) {
+      if (mounted.current && pending.current === controller)
+        setError(rewriteError(err));
+    } finally {
+      if (mounted.current && pending.current === controller) {
+        setIsLoading(false);
+        setPartial("");
+      }
+      if (pending.current === controller) pending.current = undefined;
+    }
+  }, [source.text, tone, instruction]);
+  useEffect(() => {
+    mounted.current = true;
+    void run();
+    return () => {
+      mounted.current = false;
+      pending.current?.abort();
+      pending.current = undefined;
+    };
+  }, [run]);
+
+  const title = instruction
+    ? "Custom Rewrite"
+    : `${TONE_DETAILS[tone]?.title || "Neutral"} Rewrite`;
+  const visible = showOriginal ? source.text : isLoading ? partial : result;
+  const markdown = [
+    showOriginal ? "# Original" : `# ${title}`,
+    error ? `> ${error}` : isLoading ? "Rewriting with Amazon Bedrock…" : "",
+    result && error && !showOriginal ? "Previous completed rewrite:" : "",
+    visible ? literalMarkdown(visible) : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return (
     <Detail
+      navigationTitle={nested ? title : undefined}
       isLoading={isLoading}
-      markdown={result ? `**${title}**\n\n${result}` : undefined}
+      markdown={markdown}
       metadata={
-        result ? (
-          <Detail.Metadata>
+        <Detail.Metadata>
+          <Detail.Metadata.Label
+            title="Tone"
+            text={
+              instruction
+                ? "Custom instruction"
+                : TONE_DETAILS[tone]?.title || "Neutral"
+            }
+          />
+          {instruction ? (
+            <Detail.Metadata.Label title="Instruction" text={instruction} />
+          ) : null}
+          <Detail.Metadata.Separator />
+          <Detail.Metadata.Label
+            title="Model"
+            text={formatModelName(preferences)}
+          />
+          <Detail.Metadata.Label title="Region" text={preferences.awsRegion} />
+          {result && !isLoading ? (
             <Detail.Metadata.Label
-              title="Model"
-              text={formatModelName(preferences)}
+              title="Characters"
+              text={`${source.text.length.toLocaleString()} → ${result.length.toLocaleString()}`}
             />
-            {subtitle ? (
-              <Detail.Metadata.Label title="Instruction" text={subtitle} />
-            ) : null}
-          </Detail.Metadata>
-        ) : undefined
+          ) : null}
+        </Detail.Metadata>
       }
       actions={
-        result ? (
-          <ActionPanel>
+        <ActionPanel>
+          {!isLoading && result ? (
+            <ActionPanel.Section>
+              <Action.Paste
+                title={
+                  source.frontApp && source.frontApp !== "Raycast"
+                    ? `Paste to ${source.frontApp}`
+                    : "Paste in Active App"
+                }
+                content={result}
+              />
+              <Action.CopyToClipboard
+                title="Copy Rewrite"
+                content={result}
+                shortcut={{ modifiers: ["cmd"], key: "c" }}
+              />
+            </ActionPanel.Section>
+          ) : null}
+          <ActionPanel.Section>
+            {isLoading ? (
+              <Action
+                title="Cancel Rewrite"
+                icon={Icon.Stop}
+                onAction={() => pending.current?.abort()}
+                shortcut={Keyboard.Shortcut.Common.Pin}
+              />
+            ) : (
+              <Action
+                title={error ? "Retry Rewrite" : "Rewrite Again"}
+                icon={Icon.ArrowClockwise}
+                onAction={run}
+                shortcut={Keyboard.Shortcut.Common.Refresh}
+              />
+            )}
             <Action
-              title={frontApp ? `Paste to ${frontApp}` : "Paste"}
-              onAction={async () => {
-                await Clipboard.copy(result);
-                await closeMainWindow();
-                await Clipboard.paste(result);
-                popToRoot();
-              }}
+              title={showOriginal ? "Show Rewrite" : "Show Original"}
+              icon={Icon.Document}
+              onAction={() => setShowOriginal((value) => !value)}
+              shortcut={Keyboard.Shortcut.Common.Open}
             />
             <Action.CopyToClipboard
-              title="Copy to Clipboard"
-              content={result}
-              onCopy={() => {
-                closeMainWindow();
-                popToRoot();
-              }}
+              title="Copy Original"
+              content={source.text}
+              shortcut={Keyboard.Shortcut.Common.Copy}
             />
-          </ActionPanel>
-        ) : undefined
+          </ActionPanel.Section>
+          <ActionPanel.Section>
+            <Action
+              title="Open Extension Preferences"
+              icon={Icon.Gear}
+              onAction={openExtensionPreferences}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "," }}
+            />
+            <Action.OpenInBrowser
+              title="Open Setup Guide"
+              url="https://github.com/msakowski/recast#setup"
+            />
+          </ActionPanel.Section>
+        </ActionPanel>
       }
     />
   );

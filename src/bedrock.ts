@@ -1,10 +1,10 @@
-import { readFileSync } from "fs";
-import { execSync } from "child_process";
-import { homedir } from "os";
-import { delimiter } from "path";
+import { RewriteError } from "./errors";
+import { homedir } from "node:os";
+import { delimiter } from "node:path";
 import {
   BedrockRuntimeClient,
-  ConverseCommand,
+  ConverseStreamCommand,
+  type ConverseStreamOutput,
 } from "@aws-sdk/client-bedrock-runtime";
 import {
   fromIni,
@@ -12,11 +12,11 @@ import {
   fromNodeProviderChain,
 } from "@aws-sdk/credential-providers";
 import {
-  Preferences,
+  type Preferences,
   SYSTEM_PROMPT,
-  USER_TEMPLATE,
-  TONES,
+  buildPrompt,
   resolveModelId,
+  validateConfig,
 } from "./config";
 
 export interface RewriteOptions {
@@ -24,195 +24,182 @@ export interface RewriteOptions {
   tone: string;
   customInstruction?: string;
   preferences: Preferences;
+  signal?: AbortSignal;
+  onPartial?: (text: string) => void;
 }
 
 function getCredentialProvider(preferences: Preferences) {
+  // GUI apps have a minimal PATH. Keep SDK validation, SSO, role assumption,
+  // and refresh behavior, including credential_process in nested profiles.
+  process.env.PATH = [
+    ...new Set(
+      [
+        ...(process.env.PATH || "").split(delimiter),
+        `${homedir()}/.local/bin`,
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+      ].filter(Boolean),
+    ),
+  ].join(delimiter);
   switch (preferences.credentialMethod) {
-    case "profile": {
-      const profile = preferences.awsProfile.trim();
-      if (!profile) {
-        throw new Error(
-          "Credential method is 'Named Profile' but no profile name is configured in extension preferences.",
-        );
-      }
-
-      const home = homedir();
-      const configPath = process.env.AWS_CONFIG_FILE || `${home}/.aws/config`;
-
-      let content = "";
-      try {
-        content = readFileSync(configPath, "utf-8");
-      } catch {
-        // No config file: the profile may still exist in ~/.aws/credentials.
-      }
-
-      // The config file names the default profile "[default]" and all others
-      // "[profile name]". Accept both forms for any name.
-      const headers = [`[profile ${profile}]`, `[${profile}]`];
-      const profileHeader = headers.find((h) => content.includes(h));
-      if (!profileHeader) {
-        // Not in the config file (e.g. static keys in ~/.aws/credentials).
-        // fromIni() reads both files and reports a clear error if it's missing.
-        return fromIni({ profile });
-      }
-
-      const idx = content.indexOf(profileHeader);
-      const section = content.slice(idx + profileHeader.length);
-      const nextSection = section.search(/\n\[/);
-      const block =
-        nextSection === -1 ? section : section.slice(0, nextSection);
-      const match = block.match(/credential_process\s*=\s*(.+)/);
-
-      // The SDK's fromIni() supports credential_process too, but Raycast runs
-      // extensions with a minimal PATH, so tools installed via Homebrew or
-      // ~/.local/bin are not found. Run the command ourselves with a fuller PATH.
-      if (match) {
-        const credCmd = match[1].trim();
-        const shell = process.env.SHELL || "/bin/zsh";
-        const output = execSync(credCmd, {
-          encoding: "utf-8",
-          timeout: 30_000,
-          env: {
-            HOME: home,
-            SHELL: shell,
-            PATH: [
-              process.env.PATH,
-              `${home}/.local/bin`,
-              "/opt/homebrew/bin",
-              "/usr/local/bin",
-              "/usr/bin",
-              "/bin",
-              "/usr/sbin",
-              "/sbin",
-            ]
-              .filter(Boolean)
-              .join(delimiter),
-            USER: process.env.USER ?? "",
-            TERM: process.env.TERM ?? "xterm-256color",
-          },
-        }).trim();
-        const creds = JSON.parse(output);
-        return {
-          accessKeyId: creds.AccessKeyId,
-          secretAccessKey: creds.SecretAccessKey,
-          sessionToken: creds.SessionToken,
-        };
-      }
-
-      return fromIni({ profile });
-    }
-
+    case "profile":
+      return fromIni({ profile: preferences.awsProfile.trim() });
     case "environment":
       return fromEnv();
-
-    case "default":
     default:
       return fromNodeProviderChain();
   }
 }
 
-function buildPrompt(
-  text: string,
-  tone: string,
-  customInstruction?: string,
-): string {
-  const toneInstruction = TONES[tone] || TONES["neutral"];
-  const custom = customInstruction?.trim()
-    ? `Additional instruction: ${customInstruction.trim()}`
-    : "";
-  return USER_TEMPLATE.replace("{{tone_instruction}}", toneInstruction)
-    .replace("{{custom_instruction}}", custom)
-    .replace("{{input_text}}", text);
+export async function readRewriteStream(
+  stream: AsyncIterable<ConverseStreamOutput>,
+  maxTokens: number,
+  onPartial?: (text: string) => void,
+): Promise<string> {
+  const blocks = new Map<number, string>();
+  let stopReason: string | undefined;
+  const result = () =>
+    [...blocks.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, value]) => value)
+      .join("\n");
+  for await (const event of stream) {
+    for (const key of [
+      "internalServerException",
+      "modelStreamErrorException",
+      "serviceUnavailableException",
+      "throttlingException",
+      "validationException",
+    ] as const) {
+      if (event[key])
+        throw Object.assign(
+          new RewriteError(
+            event[key].message ||
+              "Bedrock interrupted the response. Try again.",
+          ),
+          { name: key[0].toUpperCase() + key.slice(1) },
+        );
+    }
+    if (event.contentBlockDelta?.delta?.text) {
+      const { delta } = event.contentBlockDelta;
+      const contentBlockIndex = event.contentBlockDelta.contentBlockIndex ?? 0;
+      blocks.set(
+        contentBlockIndex,
+        (blocks.get(contentBlockIndex) || "") + delta.text,
+      );
+      onPartial?.(result());
+    }
+    if (event.messageStop) stopReason = event.messageStop.stopReason;
+  }
+  if (stopReason === "max_tokens") {
+    throw new RewriteError(
+      `The rewrite reached the ${maxTokens}-token limit. Increase Max Tokens in extension preferences, or rewrite a shorter selection.`,
+    );
+  }
+  if (stopReason !== "end_turn" && stopReason !== "stop_sequence") {
+    if (
+      stopReason === "content_filtered" ||
+      stopReason === "guardrail_intervened"
+    ) {
+      throw new RewriteError(
+        "The model blocked this rewrite. Try a different selection or instruction.",
+      );
+    }
+    throw new RewriteError(
+      "Bedrock did not finish the rewrite. Try again or use a shorter selection.",
+    );
+  }
+  const text = result();
+  if (!text.trim())
+    throw new RewriteError(
+      "The model returned no text. Try again or increase Max Tokens in extension preferences.",
+    );
+  return text;
 }
 
 export async function rewrite(options: RewriteOptions): Promise<string> {
-  const { text, tone, customInstruction, preferences } = options;
-
-  const trimmed = text.trim();
-  if (!trimmed) {
-    throw new Error("No text provided to rewrite.");
-  }
-
-  const maxTokens = parseInt(preferences.maxTokens, 10) || 2048;
-  const temperatureRaw = preferences.temperature?.trim();
-  const temperature = temperatureRaw ? Number(temperatureRaw) : undefined;
-  if (temperature !== undefined && !Number.isFinite(temperature)) {
-    throw new Error(
-      `Invalid temperature "${temperatureRaw}" in extension preferences.`,
-    );
-  }
-  const targetModelId = resolveModelId(preferences);
-
-  const credentials = getCredentialProvider(preferences);
-
+  const { text, tone, customInstruction, preferences, signal, onPartial } =
+    options;
+  if (!text.trim())
+    throw new RewriteError("Enter or select some text to rewrite.");
+  const inferenceConfig = validateConfig(preferences);
+  const modelId = resolveModelId(preferences);
   const client = new BedrockRuntimeClient({
-    region: preferences.awsRegion,
-    credentials,
+    region: preferences.awsRegion.trim(),
+    credentials: getCredentialProvider(preferences),
+    maxAttempts: 3,
+    retryMode: "standard",
   });
-
-  const prompt = buildPrompt(trimmed, tone, customInstruction);
-
-  const command = new ConverseCommand({
-    modelId: targetModelId,
-    system: [{ text: SYSTEM_PROMPT }],
-    messages: [{ role: "user", content: [{ text: prompt }] }],
-    inferenceConfig: {
-      maxTokens,
-      ...(temperature !== undefined ? { temperature } : {}),
-    },
-    // Rewriting needs no reasoning. Claude models that think by default can
-    // spend the whole token budget thinking and return no text.
-    ...(targetModelId.includes("anthropic.")
-      ? { additionalModelRequestFields: { thinking: { type: "disabled" } } }
-      : {}),
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    cancel();
+  }, 60_000);
+  let rejectAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = () =>
+      reject(
+        Object.assign(
+          new RewriteError(
+            timedOut
+              ? "The rewrite timed out. Check your AWS connection and try again."
+              : "Rewrite canceled.",
+          ),
+          { name: "RewriteError" },
+        ),
+      );
+    controller.signal.addEventListener("abort", rejectAbort, { once: true });
+    if (controller.signal.aborted) rejectAbort();
   });
-
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), 30_000);
-  let response;
   try {
-    response = await client.send(command, {
-      abortSignal: abortController.signal,
-    });
+    return await Promise.race([
+      (async () => {
+        const response = await client.send(
+          new ConverseStreamCommand({
+            modelId,
+            system: [{ text: SYSTEM_PROMPT }],
+            messages: [
+              {
+                role: "user",
+                content: [{ text: buildPrompt(text, tone, customInstruction) }],
+              },
+            ],
+            inferenceConfig,
+            // Only this verified model gets a thinking override. Other Claude
+            // generations have different controls and may reject this value.
+            ...(modelId.endsWith("anthropic.claude-haiku-5-5")
+              ? {
+                  additionalModelRequestFields: {
+                    thinking: { type: "disabled" },
+                  },
+                }
+              : {}),
+          }),
+          { abortSignal: controller.signal },
+        );
+        if (!response.stream)
+          throw new RewriteError(
+            "Bedrock returned no response stream. Try again.",
+          );
+        return readRewriteStream(
+          response.stream,
+          inferenceConfig.maxTokens,
+          onPartial,
+        );
+      })(),
+      aborted,
+    ]);
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
+    if (rejectAbort)
+      controller.signal.removeEventListener("abort", rejectAbort);
+    client.destroy();
   }
-
-  const content = response.output?.message?.content;
-  if (!content || content.length === 0) {
-    throw new Error("Bedrock returned no content.");
-  }
-
-  const parts: string[] = [];
-  for (const block of content) {
-    if (block.text?.trim()) {
-      parts.push(block.text.trim());
-    }
-  }
-
-  const result = parts.join("\n").trim();
-  if (!result) {
-    if (response.stopReason === "max_tokens") {
-      throw new Error(
-        `Model hit the ${maxTokens}-token limit before producing text. Increase Max Tokens in extension preferences.`,
-      );
-    }
-    throw new Error(
-      `Bedrock returned empty text (stop reason: ${response.stopReason ?? "unknown"}).`,
-    );
-  }
-
-  const ratio = result.length / Math.max(trimmed.length, 1);
-  if (ratio > 3.0) {
-    throw new Error(
-      "Model output is unexpectedly long — it may have added commentary. Try again.",
-    );
-  }
-  if (ratio < 0.1) {
-    throw new Error(
-      "Model output is unexpectedly short — the rewrite may be incomplete. Try again.",
-    );
-  }
-
-  return result;
 }
