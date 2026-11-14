@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "recast",
-  "title": "Recast",
+  "name": "recast-text-rewriter",
+  "title": "Recast - Text Rewriter",
   "description": "Rewrite, polish, and translate text with Claude on Amazon Bedrock using your own AWS account.",
   "icon": "icon.png",
   "author": "martin_sakowski",

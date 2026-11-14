@@ -57,7 +57,7 @@ const api = {
     launchType: "userInitiated",
     entryPointMode: "view",
     supportPath: "/unused-test-cache",
-    extensionName: "recast",
+    extensionName: "recast-text-rewriter",
   },
   LaunchType: { Background: "background" },
   getPreferenceValues: () => ({ ...state.preferences }),
