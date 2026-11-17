@@ -72,7 +72,22 @@ export function publishStore(
     }
   };
   const fetchBranch = (url, branch, ref) => {
-    git("fetch", "--filter=blob:none", url, `+refs/heads/${branch}:${ref}`);
+    console.log(`Fetching ${branch} from ${url}…`);
+    run(
+      "git",
+      [
+        "fetch",
+        "--no-tags",
+        "--progress",
+        "--filter=blob:none",
+        url,
+        `+refs/heads/${branch}:${ref}`,
+      ],
+      {
+        stdio: ["ignore", "pipe", "inherit"],
+        timeout: 180000,
+      },
+    );
     return git("rev-parse", ref);
   };
 
