@@ -202,6 +202,7 @@ export function publishStore(
     `Validating source ${source.slice(0, 12)} for ${pr ? pr.html_url : "a new Store PR"}…`,
   );
   run("npm", ["run", "check"], { stdio: "inherit" });
+  run("npm", ["run", "audit:ci"], { stdio: "inherit" });
   if (git("status", "--porcelain") || git("rev-parse", "HEAD") !== source)
     throw new Error("Source changed during validation. Commit and retry.");
   const prepared = prepare({ parent, baseline, sourceRef: source });

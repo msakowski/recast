@@ -12,11 +12,18 @@ npm run dev
 ```sh
 npm run check      # types, behavioral tests, Raycast lint, production build, bundle smoke test
 npm audit         # dependency advisory check
+npm run audit:ci  # CI policy, including the narrowly scoped temporary exception below
 ```
 
 The bundle smoke test loads all three generated commands and exercises the packaged AWS SDK through request serialization, without network access or real credentials. Tests cover stream failures, truncation, cancellation, routing, parameter validation, Unicode, and literal previews. The `minimatch` override pins the patched tooling dependency until upstream consumers update their ranges.
 
 Store publication requires Raycast’s review and merge of the generated pull request. Development changes can be submitted to [the source repository](https://github.com/msakowski/recast).
+
+## Temporary dependency advisory exception
+
+Reviewed 2026-11-17; expires 2026-12-17 (UTC). [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) affects picomatch through 4.0.7, with no patched release available. The vulnerable operation requires attacker-controlled repeated-extglob patterns. Our installed picomatch 4.0.7 is pulled in by Raycast's CLI and lint tooling through tinyglobby/fdir; Recast does not accept user glob patterns or include picomatch in its generated command bundles. Build/lint patterns come from repository-controlled configuration. Do not run those tools against untrusted glob input.
+
+`audit:ci` temporarily accepts only that exact advisory at the reviewed version/path, plus dependency findings caused solely by it. All other findings, registry failures, changed installations, and expiration fail CI. The advisory remains visible in the job output and raw `npm audit` still reports it. This is a scoped risk acceptance, not a patched dependency. Remove the exception and update the lockfile when an upstream fix becomes available; review it again before expiry. Do not use `npm audit fix --force`: its current suggestion downgrades the Raycast API from 2.x to 1.100.3. The publisher runs the same audit policy before pushing.
 
 ## Publishing and updating the Store
 

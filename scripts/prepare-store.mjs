@@ -33,6 +33,7 @@ export function prepareStore({ parent, baseline, sourceRef = "HEAD" }) {
   manifest.scripts.publish = "npx @raycast/api@latest publish";
   manifest.scripts.check = "npm run build && npm run lint";
   delete manifest.scripts.test;
+  delete manifest.scripts["audit:ci"];
   delete manifest.scripts["test:publish"];
   delete manifest.scripts["prepare:store"];
   delete manifest.scripts["test:bundle"];

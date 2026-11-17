@@ -208,7 +208,8 @@
     "test:bundle": "node scripts/test-bundle.cjs",
     "publish": "node scripts/publish-store.mjs",
     "prepare:store": "node scripts/publish-store.mjs --dry-run",
-    "test:publish": "node --test tests/publish.test.mjs"
+    "test:publish": "node --test tests/publish.test.mjs tests/audit.test.mjs",
+    "audit:ci": "node scripts/check-audit.mjs"
   },
   "platforms": [
     "macOS"
