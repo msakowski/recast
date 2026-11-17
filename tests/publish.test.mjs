@@ -210,6 +210,10 @@ test("packages source, preserves upstream edits across releases, and stops on co
     ])
       write(`source/${name}`, "Original\n");
     write("extensions/unrelated/README.md", "Other extension\n");
+    write(
+      "source/CHANGELOG.md",
+      "# Changelog\n\n## [Initial] - {PR_MERGE_DATE}\n\n- Initial release.\n",
+    );
     const initial = commit();
     process.chdir(dir);
     const first = prepareStore({
@@ -234,9 +238,17 @@ test("packages source, preserves upstream edits across releases, and stops on co
     // Source-only snapshot remains distinct from reviewer/contributor edits.
     git("reset", "--hard", first.commit);
     write("extensions/recast-text-rewriter/help.md", "Upstream help\n");
+    write(
+      "extensions/recast-text-rewriter/CHANGELOG.md",
+      "# Changelog\n\n## [Initial] - 2026-11-16\n\n- Initial release.\n",
+    );
     write("extensions/unrelated/README.md", "Updated other extension\n");
     const upstream = commit();
     write("source/src/index.ts", "Source fix\n");
+    write(
+      "source/CHANGELOG.md",
+      "# Changelog\n\n## [Fix] - {PR_MERGE_DATE}\n\n- Selection fix.\n\n## [Initial] - 2026-11-16\n\n- Initial release.\n",
+    );
     commit();
     const next = prepareStore({
       parent: upstream,

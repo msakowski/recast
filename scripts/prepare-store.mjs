@@ -118,6 +118,65 @@ export function prepareStore({ parent, baseline, sourceRef = "HEAD" }) {
         : entry;
     }),
   );
+  // Raycast replaces merge-date placeholders on publication. Treat dates that
+  // source has explicitly adopted as baseline metadata, so a new top entry
+  // doesn't conflict with the previously published entry's adjacent heading.
+  const changelogPath = `extensions/${manifest.name}/CHANGELOG.md`;
+  if (
+    git(["ls-tree", baseline, changelogPath]) &&
+    git(["ls-tree", parent, changelogPath])
+  ) {
+    const oldLog = git(["show", `${baseline}:${changelogPath}`]);
+    const publishedLog = git(["show", `${parent}:${changelogPath}`]);
+    const sourceLog = git(["show", `${sourceRef}:CHANGELOG.md`]);
+    const normalized = oldLog.replace(
+      /^## (.+) - \{PR_MERGE_DATE\}$/gm,
+      (heading, title) => {
+        const published = publishedLog
+          .split("\n")
+          .find(
+            (line) =>
+              line.startsWith(`## ${title} - `) &&
+              / - \d{4}-\d{2}-\d{2}$/.test(line),
+          );
+        return published && sourceLog.split("\n").includes(published)
+          ? published
+          : heading;
+      },
+    );
+    if (normalized !== oldLog) {
+      const blob = git(["hash-object", "-w", "--stdin"], `${normalized}\n`);
+      const extensionTree = makeTree(
+        entries(`${baseline}:extensions/${manifest.name}`).map((entry) =>
+          name(entry) === "CHANGELOG.md"
+            ? `100644 blob ${blob}\tCHANGELOG.md`
+            : entry,
+        ),
+      );
+      const extensionsTree = makeTree(
+        entries(`${baseline}:extensions`).map((entry) =>
+          name(entry) === manifest.name
+            ? `040000 tree ${extensionTree}\t${manifest.name}`
+            : entry,
+        ),
+      );
+      const tree = makeTree(
+        entries(baseline).map((entry) =>
+          name(entry) === "extensions"
+            ? `040000 tree ${extensionsTree}\textensions`
+            : entry,
+        ),
+      );
+      baseline = git([
+        "commit-tree",
+        tree,
+        "-p",
+        baseline,
+        "-m",
+        "Adopt published changelog dates",
+      ]);
+    }
+  }
   const root = entries(baseline);
   const oldExtensions = root.find((entry) => name(entry) === "extensions");
   if (!oldExtensions)
