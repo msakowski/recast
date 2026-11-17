@@ -7,7 +7,19 @@ import { join } from "node:path";
 
 const env = { ...process.env };
 const git = (args, input) =>
-  execFileSync("git", args, { env, input, encoding: "utf8" }).trim();
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "http.version=HTTP/1.1",
+      "-c",
+      "http.lowSpeedLimit=1",
+      "-c",
+      "http.lowSpeedTime=30",
+      ...args,
+    ],
+    { env, input, encoding: "utf8" },
+  ).trim();
 const entries = (ref) =>
   git(["ls-tree", "-z", ref]).split("\0").filter(Boolean);
 const name = (entry) => entry.split("\t")[1];

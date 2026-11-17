@@ -10,8 +10,22 @@ const remote = "raycast-store";
 const extension = "recast-text-rewriter";
 const snapshotRef = "refs/recast-store/source-snapshot";
 const snapshotBranch = "recast-source-snapshot";
+const gitTransport = [
+  "-c",
+  "http.version=HTTP/1.1",
+  "-c",
+  "http.lowSpeedLimit=1",
+  "-c",
+  "http.lowSpeedTime=30",
+];
 const run = (command, args, options = {}) =>
-  (execFileSync(command, args, { encoding: "utf8", ...options }) ?? "").trim();
+  (
+    execFileSync(
+      command,
+      command === "git" ? [...gitTransport, ...args] : args,
+      { encoding: "utf8", ...options },
+    ) ?? ""
+  ).trim();
 
 export function githubRepository(url) {
   const match =
@@ -43,7 +57,7 @@ function validatePackage(commit) {
   try {
     const archive = execFileSync(
       "git",
-      ["archive", `${commit}:extensions/${extension}`],
+      [...gitTransport, "archive", `${commit}:extensions/${extension}`],
       { maxBuffer: 64 * 1024 * 1024 },
     );
     execFileSync("tar", ["-xf", "-", "-C", dir], { input: archive });
