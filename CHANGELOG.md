@@ -5,7 +5,7 @@
 - Resolve the frontmost app before capturing selected text, and retry ambiguous selection reads that match the previous clipboard contents.
 - Keep manual entry available when the app cannot supply a selection.
 
-## [Initial Version] - {PR_MERGE_DATE}
+## [Initial Version] - 2026-11-16
 
 - Rewrite selected or entered text with Claude on Amazon Bedrock using your own AWS account.
 - Choose Friendly, Professional, Concise, Polished, or Neutral, or provide a custom rewrite or translation instruction.
