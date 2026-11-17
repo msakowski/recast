@@ -103,6 +103,34 @@ test("source hook captures once and falls back to manual input when selection is
   assert.equal(selected.mock.callCount(), 1);
 });
 
+test("source waits for app lookup and captures fresh text on each launch", async (t) => {
+  let finishApp!: (app: { name: string }) => void;
+  const appReady = new Promise<{ name: string }>((resolve) => {
+    finishApp = resolve;
+  });
+  const front = mock.method(state, "frontApp", () => appReady);
+  let text = "First selection";
+  const selected = mock.method(state, "selectedText", async () => text);
+  t.after(() => {
+    front.mock.restore();
+    selected.mock.restore();
+  });
+  let captured: Source | undefined;
+  function Capture() {
+    captured = useSource();
+    return null;
+  }
+  const view = await mount(t, <Capture key="first-launch" />);
+  assert.equal(captured, undefined);
+  assert.equal(selected.mock.callCount(), 0);
+  await act(async () => finishApp({ name: "TextEdit" }));
+  assert.deepEqual(captured, { text, frontApp: "TextEdit" });
+  text = "Second selection";
+  await act(async () => view.update(<Capture key="second-launch" />));
+  assert.deepEqual(captured, { text, frontApp: "TextEdit" });
+  assert.equal(selected.mock.callCount(), 2);
+});
+
 test("cancel retains the last completed rewrite; retry reads current preferences", async (t) => {
   reset();
   const modelIds: string[] = [];

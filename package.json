@@ -135,7 +135,7 @@
     {
       "name": "maxTokens",
       "title": "Max Tokens",
-      "description": "Maximum response tokens (1\u201365536; your model may have a lower limit). Incomplete rewrites cannot be pasted. Increase this for long selections.",
+      "description": "Maximum response tokens (1–65536; your model may have a lower limit). Incomplete rewrites cannot be pasted. Increase this for long selections.",
       "type": "textfield",
       "required": false,
       "default": "2048",
@@ -204,10 +204,11 @@
     "typecheck": "tsc --noEmit",
     "lint:fix": "ray lint --fix",
     "test": "node --require ./tests/raycast-mock.cjs --import tsx --test tests/*.test.ts tests/*.test.tsx",
-    "check": "npm run build && npm test && npm run lint && npm run test:bundle",
+    "check": "npm run build && npm test && npm run test:publish && npm run lint && npm run test:bundle",
     "test:bundle": "node scripts/test-bundle.cjs",
-    "publish": "npm run prepare:store && git push raycast-store recast",
-    "prepare:store": "node scripts/prepare-store.mjs"
+    "publish": "node scripts/publish-store.mjs",
+    "prepare:store": "node scripts/publish-store.mjs --dry-run",
+    "test:publish": "node --test tests/publish.test.mjs"
   },
   "platforms": [
     "macOS"

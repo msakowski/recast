@@ -10,6 +10,7 @@ const defaults = () =>
 const state = {
   preferences: defaults(),
   selectedText: async () => "Sample selection",
+  clipboardText: async () => "Previous clipboard text",
   frontApp: async () => ({ name: "TextEdit" }),
   toasts: [],
 };
@@ -62,6 +63,7 @@ const api = {
   LaunchType: { Background: "background" },
   getPreferenceValues: () => ({ ...state.preferences }),
   getSelectedText: () => state.selectedText(),
+  Clipboard: { readText: () => state.clipboardText() },
   getFrontmostApplication: () => state.frontApp(),
   openExtensionPreferences: async () => {},
   showToast: async (...args) => {
